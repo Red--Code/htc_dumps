@@ -1,0 +1,70 @@
+name: Analyze HTC M9+ vendor libraries
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install analysis tools
+        run: sudo apt-get update && sudo apt-get install -y binutils python3
+      - name: Inspect archive and ELF dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f m9p-missing-libs.tar.gz
+          mkdir -p work/root report
+          tar -tzf m9p-missing-libs.tar.gz > report/archive-file-list.txt
+          tar --no-same-owner --no-same-permissions -xzf m9p-missing-libs.tar.gz -C work/root
+          python3 - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          from collections import defaultdict
+          root = Path('work/root')
+          libs = sorted(p for p in root.rglob('*') if p.is_file() and ('.so' in p.name))
+          providers = defaultdict(list)
+          needed_rows = []
+          report = []
+          for p in libs:
+              rel = str(p.relative_to(root))
+              def readelf(*args):
+                  return subprocess.run(['readelf', *args, str(p)], text=True, capture_output=True).stdout
+              hdr = readelf('-h')
+              dyn = readelf('-d')
+              report.append('===== ' + rel + ' =====')
+              report.extend(line.strip() for line in hdr.splitlines() if any(x in line for x in ('Class:', 'Data:', 'Machine:', 'OS/ABI:')))
+              report.extend(line.strip() for line in dyn.splitlines() if '(SONAME)' in line or '(NEEDED)' in line)
+              report.append('')
+              soname = next((x.split('[',1)[1].split(']',1)[0] for x in dyn.splitlines() if '(SONAME)' in x and '[' in x), p.name)
+              providers[soname].append(rel)
+              for line in dyn.splitlines():
+                  if '(NEEDED)' in line and '[' in line:
+                      needed_rows.append((rel, line.split('[',1)[1].split(']',1)[0]))
+          Path('report/libraries.txt').write_text('\n'.join(report))
+          with Path('report/dependency-resolution.tsv').open('w') as f:
+              f.write('STATUS\tCONSUMER\tNEEDED\tPROVIDER_PATHS\n')
+              for consumer, needed in sorted(needed_rows):
+                  found = providers.get(needed, [])
+                  f.write(('FOUND' if found else 'NOT_IN_ARCHIVE') + '\t' + consumer + '\t' + needed + '\t' + ', '.join(found) + '\n')
+          missing = [(c,n) for c,n in needed_rows if not providers.get(n)]
+          duplicates = {k:v for k,v in providers.items() if len(v) > 1}
+          summary = ['# HTC One M9+ library archive analysis', '', '- ELF libraries inspected: ' + str(len(libs)), '- DT_NEEDED entries: ' + str(len(needed_rows)), '- Dependencies not provided inside this archive: ' + str(len(missing)), '- SONAMEs with multiple providers: ' + str(len(duplicates)), '', '> NOT_IN_ARCHIVE does not prove a dependency is missing from the phone; it may be provided by /system, the Android runtime, or another vendor archive.', '', '## Dependencies not found in this archive', '']
+          summary += ['- `' + n + '` required by `' + c + '`' for c,n in sorted(missing)]
+          summary += ['', '## Duplicate providers', '']
+          summary += ['- `' + k + '`: ' + ', '.join('`' + p + '`' for p in v) for k,v in sorted(duplicates.items())]
+          Path('report/summary.md').write_text('\n'.join(summary) + '\n')
+          Path('report/library-count.txt').write_text(str(len(libs)) + '\n')
+          PY
+      - name: Upload text-only report
+        uses: actions/upload-artifact@v4
+        with:
+          name: htc-m9p-library-analysis
+          path: report/
+          if-no-files-found: error
+          retention-days: 14
