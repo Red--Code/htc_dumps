@@ -1,0 +1,78 @@
+name: Smoke-build HTC M9pw reference kernel
+
+on:
+  push:
+    branches:
+      - android9-port-work
+    paths:
+      - .github/workflows/kernel-smoke-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-reference-kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential flex libssl-dev libncurses-dev git python3
+
+      - name: Fetch HTC M9pw kernel source and GCC 4.9 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth=1 --branch 1.88 https://github.com/tbalden/android_kernel_htc_m9pw.git kernel
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 toolchain
+          {
+            echo "KERNEL_COMMIT=$(git -C kernel rev-parse HEAD)"
+            echo "KERNEL_BRANCH=1.88"
+            echo "TOOLCHAIN_COMMIT=$(git -C toolchain rev-parse HEAD)"
+            echo "TOOLCHAIN_GCC=$(toolchain/bin/aarch64-linux-android-gcc --version | head -n1)"
+          } | tee source-versions.txt
+
+      - name: Configure and compile reference Image.gz-dtb
+        shell: bash
+        run: |
+          set -u
+          mkdir -p report
+          cp source-versions.txt report/
+          cd kernel
+          export ARCH=arm64
+          export CROSS_COMPILE="$GITHUB_WORKSPACE/toolchain/bin/aarch64-linux-android-"
+          export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
+          make hiau_ml_tuhl_defconfig > "$GITHUB_WORKSPACE/report/configure.log" 2>&1
+          cfg_rc=$?
+          echo "defconfig_exit_code=$cfg_rc" | tee "$GITHUB_WORKSPACE/report/status.txt"
+          if [ "$cfg_rc" -eq 0 ]; then
+            grep -E '^(CONFIG_ARCH_MT6795|CONFIG_MTK_PLATFORM|CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE|CONFIG_ANDROID_BINDER_IPC|CONFIG_ASHMEM|CONFIG_TOUCHSCREEN_MAX1187X|CONFIG_MTK_COMBO_CHIP_MT6630|CONFIG_SECURITY_SELINUX)=' .config > "$GITHUB_WORKSPACE/report/config-summary.txt" || true
+            make -j2 Image.gz-dtb > "$GITHUB_WORKSPACE/report/build.log" 2>&1
+            build_rc=$?
+            echo "image_gz_dtb_exit_code=$build_rc" | tee -a "$GITHUB_WORKSPACE/report/status.txt"
+            tail -n 180 "$GITHUB_WORKSPACE/report/build.log" > "$GITHUB_WORKSPACE/report/build-tail.txt"
+            if [ "$build_rc" -eq 0 ]; then
+              {
+                echo "image_path=arch/arm64/boot/Image.gz-dtb"
+                stat -c 'image_bytes=%s' arch/arm64/boot/Image.gz-dtb
+                sha256sum arch/arm64/boot/Image.gz-dtb
+                echo
+                echo "built_dtbs:"
+                find arch/arm64/boot/dts -maxdepth 1 -type f \( -name 'hiau_ml*.dtb' \) -printf '%f %s bytes\n' | sort
+              } > "$GITHUB_WORKSPACE/report/build-output.txt"
+              strings arch/arm64/boot/Image | grep -m 5 'Linux version ' > "$GITHUB_WORKSPACE/report/kernel-version.txt" || true
+            fi
+          else
+            tail -n 180 "$GITHUB_WORKSPACE/report/configure.log" > "$GITHUB_WORKSPACE/report/configure-tail.txt"
+          fi
+
+      - name: Upload text-only compile report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: htc-m9pw-reference-kernel-smoke-build
+          path: report/
+          if-no-files-found: warn
+          retention-days: 14
