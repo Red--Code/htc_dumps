@@ -64,6 +64,12 @@ Source listing: https://www.htcdev.com/devcenter/downloads/P460
 
 The user's running kernel is 3.10.72. Until an exact matching 3.10.72 HTC source package or a verifiable patch path is found, the kernel source baseline remains an unresolved blocker. The X500 3.10.108 kernel cannot fill this gap by itself.
 
+### HTC One X9 as a closer HTC/MTK kernel clue
+
+A public device report for the HTC One X9 (`E56_ML_DTUL`, another HTC MT6795 device) records Android 6.0 and kernel `3.10.72-00874-gbb55c05`. The user's M9+ build is `3.10.72-00985-g797d1b3`. That makes the X9 a potentially closer HTC kernel-lineage reference than the Redmi Note 2, but it is a different board/device and the build IDs are not identical. Searches did not surface a verifiable public `android_kernel_htc_e56` source repository or source package. Do not treat the X9 kernel binary or its DTB as interchangeable with the M9+.
+
+Device report: https://4pda.to/forum/index.php?showtopic=555928&st=140
+
 ### Same-version MT6795 kernel reference
 
 A second kernel reference is available at:
