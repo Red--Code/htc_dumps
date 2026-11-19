@@ -1,0 +1,58 @@
+name: Inspect public HTC One X9 prebuilt kernel
+
+on:
+  push:
+    branches:
+      - android9-source-assessment
+    paths:
+      - ".github/workflows/inspect-x9-kernel.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out assessment repository
+        uses: actions/checkout@v4
+      - name: Fetch public HTC One X9 device tree
+        run: |
+          git clone --depth 1 --branch android-6.0 https://github.com/sabpprook/android_device_htc_e56ml.git /tmp/e56ml
+      - name: Inspect kernel and device-tree metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          K=/tmp/e56ml/kernel
+          test -s "$K"
+          {
+            echo "# HTC One X9 public prebuilt kernel inspection"
+            echo
+            echo "- Repository: https://github.com/sabpprook/android_device_htc_e56ml/tree/android-6.0"
+            echo "- Kernel blob SHA-256: $(sha256sum "$K" | awk '{print $1}')"
+            echo "- Kernel blob size: $(stat -c '%s' "$K") bytes"
+            echo "- File identification: $(file -b "$K")"
+            echo
+            echo "## Kernel version strings"
+            strings -a "$K" | grep -E -m 15 'Linux version|3\.10\.|gcc version|GCC:|builduser|android' || true
+            echo
+            echo "## Kernel strings around version markers"
+            grep -aob -E 'Linux version|3\.10\.[0-9]+' "$K" | head -30 || true
+          } > report/x9-kernel.txt
+          cp /tmp/e56ml/BoardConfig.mk report/x9-BoardConfig.mk
+          cp /tmp/e56ml/recovery.fstab report/x9-recovery.fstab
+          cp /tmp/e56ml/recovery/root/fstab.mt6795 report/x9-fstab.mt6795
+          {
+            echo "# HTC One X9 device tree BoardConfig comparison"
+            echo
+            grep -E 'TARGET_BOARD_PLATFORM|TARGET_BOOTLOADER_BOARD_NAME|TARGET_ARCH|BOARD_KERNEL_CMDLINE|BOARD_KERNEL_BASE|BOARD_KERNEL_PAGESIZE|BOARD_MKBOOTIMG_ARGS|BOARD_BOOTIMAGE_PARTITION_SIZE|BOARD_RECOVERYIMAGE_PARTITION_SIZE|TARGET_PREBUILT_KERNEL' /tmp/e56ml/BoardConfig.mk
+          } > report/x9-board-summary.txt
+      - name: Upload text-only report
+        uses: actions/upload-artifact@v4
+        with:
+          name: htc-m9p-x9-kernel-reference
+          path: report/
+          if-no-files-found: error
+          retention-days: 14
