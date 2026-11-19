@@ -45,6 +45,7 @@ jobs:
           # Trustonic GUD source includes a header from its parent directory but
           # the upstream Kbuild omitted that include directory.
           echo 'ccflags-y += -I$(srctree)/drivers/misc/mediatek/gud/mt6795/gud' >> kernel/drivers/misc/mediatek/gud/mt6795/gud/Makefile
+          echo 'ccflags-y += -I$(srctree)/drivers/misc/mediatek/jpeg/mt6795' >> kernel/drivers/misc/mediatek/jpeg/mt6795/Makefile
 
       - name: Configure and compile reference Image.gz-dtb
         shell: bash
@@ -83,7 +84,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: htc-m9pw-reference-kernel-smoke-build-v4
+          name: htc-m9pw-reference-kernel-smoke-build-v5
           path: report/
           if-no-files-found: warn
           retention-days: 14
