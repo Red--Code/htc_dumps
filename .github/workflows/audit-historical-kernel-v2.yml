@@ -1,0 +1,94 @@
+name: Audit historical HTC M9+ prebuilt kernel v2
+
+on:
+  push:
+    branches:
+      - kernel-source-audit
+    paths:
+      - .github/workflows/audit-historical-kernel-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download exact historical device-tree kernel blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work report
+          curl -fL --retry 3 \
+            https://raw.githubusercontent.com/sabpprook/android_device_htc_hiau_ml_tuhl/2df72337ae1fee189688abde146627de6189cf64/kernel \
+            -o work/hiau-old-kernel
+          file work/hiau-old-kernel > report/file-type.txt
+          sha256sum work/hiau-old-kernel > report/checksums.txt
+      - name: Extract gzip kernel before appended FDTs and inspect strings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, re, subprocess, zlib
+          from pathlib import Path
+          p = Path("work/hiau-old-kernel")
+          b = p.read_bytes()
+          lines = [
+              "# Historical HTC M9+ prebuilt kernel audit (corrected extraction)",
+              "",
+              f"- Blob size: {len(b)} bytes",
+              f"- Blob SHA-256: {hashlib.sha256(b).hexdigest()}",
+              f"- Target stock kernel version: 3.10.72-00985-g797d1b3",
+              "- Device-tree source: sabpprook/android_device_htc_hiau_ml_tuhl",
+              "- Device-tree commit: 2df72337ae1fee189688abde146627de6189cf64",
+              "",
+          ]
+          starts = [m.start() for m in re.finditer(bytes.fromhex("1f8b08"), b)]
+          lines += [f"- Gzip magic offsets: {starts[:20]}"]
+          dec = None
+          for off in starts:
+              obj = zlib.decompressobj(16 + zlib.MAX_WBITS)
+              try:
+                  out = obj.decompress(b[off:])
+                  out += obj.flush()
+                  if len(out) > 1_000_000:
+                      dec = (off, out, obj.eof, len(obj.unused_data))
+                      break
+              except zlib.error as e:
+                  lines.append(f"- Decompress error at {off}: {e}")
+          if dec:
+              off, out, eof, unused = dec
+              Path("work/historical-kernel-uncompressed").write_bytes(out)
+              lines += [
+                  f"- Decoded gzip offset: {off}",
+                  f"- Decompressed kernel bytes: {len(out)}",
+                  f"- gzip end-of-stream flag: {eof}",
+                  f"- trailing bytes after gzip member: {unused}",
+                  f"- decompressed SHA-256: {hashlib.sha256(out).hexdigest()}",
+              ]
+              try:
+                  s = subprocess.run(["strings", "-a", "-n", "6", "work/historical-kernel-uncompressed"], capture_output=True, text=True, check=True).stdout.splitlines()
+              except Exception:
+                  s = [x.decode("ascii", "replace") for x in re.findall(rb"[\\x20-\\x7e]{6,}", out)]
+              relevant = [x for x in s if any(y in x.lower() for y in ("linux version", "gcc version", "mt6795", "mediatek", "hiau", "htc", "android"))]
+              lines += ["", "## Relevant strings"] + ["- " + x[:300] for x in relevant[:160]]
+              lines += ["", "## Kernel version string candidates"]
+              lines += ["- " + x for x in s if "Linux version " in x][:20]
+          else:
+              lines += ["- No gzip member could be decoded."]
+          fdt = bytes.fromhex("d00dfeed")
+          offs = [m.start() for m in re.finditer(re.escape(fdt), b)]
+          lines += ["", "## Appended FDT markers"] + [f"- Offset {x}" for x in offs]
+          lines += ["", "## Comparison", "",
+                    "The device-tree kernel's blob size is 6,917,830 bytes. The user's current boot image contains a 7,357,362-byte compressed kernel+DTB segment with kernel version 3.10.72-00985-g797d1b3. Compare the extracted Linux version/build strings above; a mismatch in kernel version means this historical prebuilt should not be used as a drop-in kernel.",
+                    ""]
+          Path("report/kernel-audit-v2.md").write_text("\n".join(lines))
+          PY
+      - name: Upload text-only audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: htc-m9p-historical-kernel-audit-v2
+          path: report/
+          if-no-files-found: error
+          retention-days: 14
