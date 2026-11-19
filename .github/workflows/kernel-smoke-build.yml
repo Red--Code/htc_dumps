@@ -14,7 +14,7 @@ permissions:
 jobs:
   build-reference-kernel:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Install host build dependencies
         run: |
@@ -35,6 +35,14 @@ jobs:
             echo "TOOLCHAIN_GCC=$(toolchain/bin/aarch64-elf-gcc --version | head -n1)"
           } | tee source-versions.txt
 
+      - name: Apply temporary local-header include fix for old Synaptics driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Header exists in the source tree; the old driver Makefile used -I$(PWD),
+          # which points at the kernel root under Kbuild rather than its own directory.
+          echo 'subdir-ccflags-y += -I$(srctree)/drivers/misc/fpr_Synaptics' >> kernel/drivers/misc/fpr_Synaptics/Makefile
+
       - name: Configure and compile reference Image.gz-dtb
         shell: bash
         run: |
@@ -49,7 +57,7 @@ jobs:
           echo "defconfig_exit_code=$cfg_rc" | tee "$GITHUB_WORKSPACE/report/status.txt"
           if [ "$cfg_rc" -eq 0 ]; then
             grep -E '^(CONFIG_ARCH_MT6795|CONFIG_MTK_PLATFORM|CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE|CONFIG_ANDROID_BINDER_IPC|CONFIG_ASHMEM|CONFIG_TOUCHSCREEN_MAX1187X|CONFIG_MTK_COMBO_CHIP_MT6630|CONFIG_SECURITY_SELINUX)=' .config > "$GITHUB_WORKSPACE/report/config-summary.txt" || true
-            make -j2 HOSTCFLAGS="-fcommon" Image.gz-dtb > "$GITHUB_WORKSPACE/report/build.log" 2>&1
+            make -j4 HOSTCFLAGS="-fcommon" Image.gz-dtb > "$GITHUB_WORKSPACE/report/build.log" 2>&1
             build_rc=$?
             echo "image_gz_dtb_exit_code=$build_rc" | tee -a "$GITHUB_WORKSPACE/report/status.txt"
             tail -n 180 "$GITHUB_WORKSPACE/report/build.log" > "$GITHUB_WORKSPACE/report/build-tail.txt"
@@ -72,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: htc-m9pw-reference-kernel-smoke-build-v2
+          name: htc-m9pw-reference-kernel-smoke-build-v3
           path: report/
           if-no-files-found: warn
           retention-days: 14
