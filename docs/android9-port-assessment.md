@@ -108,6 +108,18 @@ Existing analysis artifact: `htc-m9p-library-analysis.zip` (from workflow run 44
 5. **Build before flashing.** Produce repeatable unsigned test artifacts and inspect their contents and partition targets. Do not generate a normal OTA installer that writes firmware or unrelated partitions.
 6. **Establish a recovery path before any device test.** The device is S-ON, and the earlier fastboot outputs were not consistent about unlock state. Do not assume arbitrary boot or recovery images can be flashed. Keep verified stock boot, recovery and data backups; never write preloader, modem/radio, NVRAM, calibration or other unrelated partitions.
 
+## 8. Fresh analysis of the supplied boot backup and blobs
+
+The 32 MiB `boot.emmc.win` backup was parsed directly. The kernel segment contains the exact running build string `3.10.72-00985-g797d1b3` (GCC 4.9.x-google; Tue Oct 18 17:32:43 CST 2016). The boot header reports 2048-byte pages, kernel load address `0x40080000`, ramdisk load address `0x44000000`, tags `0x4e000000`, and command line `bootopt=64S3,32N2,64N2`. Relative to base `0x40078000`, offsets are kernel `0x8000`, ramdisk `0x03f88000`, second `0x00e88000`, and tags `0x0df88000`. This exactly matches the MT6795 X500 Pie BoardConfig boot convention; it validates only the common MTK boot layout.
+
+The backup ramdisk is **Magisk-patched**: it has `.backup/.magisk`, `.backup/init.xz` and `overlay.d/sbin/magisk.xz`. The original static AArch64 Android 23 init binary was recovered from `.backup/init.xz`; do not treat the current ramdisk `/init` as stock. The main MT6795 init imports HTC project/USB/storage scripts and explicitly imports `init.modem.rc` last.
+
+Three 40,897-byte FDTs are appended after the compressed kernel. All three contain 1,121 parsed properties; their only parsed difference is `/htc_board_info/htc_pid` = 0, 1, or 2. The trees identify `maxim,max1187x_tsc` touch, JDI/Tianma panel variants, an FPC fingerprint interrupt, AK8789 hall sensor and NXP PN544 NFC. Preserve this HTC data rather than replacing it with the X500 DTB.
+
+Including the separate extra-library and hardware archives, the combined vendor scan covers 271 ELF shared objects (139 ELF32, 132 ELF64) and 2,393 `DT_NEEDED` entries. There are 85 unique unresolved ABI/name pairs at archive-only scope, but most are standard Android platform libraries. Nine likely MTK/vendor-specific dependencies still do not appear in any supplied archive: `lib3aIP.so`, `libcam3_utils.so`, `libmp4enc_sa.ca7.so`, `libmtkjpeg.so`, `libvc1dec_sa.ca7.so`, `libvcodec_oal.so`, `libvcodec_utility.so`, `libvp8dec_sa.ca7.so`, and `libvp8enc_sa.ca7.so`. They may still exist in the uncollected portions of the original stock system image.
+
+A text-only technical report was generated locally as `htc-m9p-stock-baseline-report.zip`. The new GitHub report is `docs/stock-boot-and-vendor-analysis.md`. No proprietary binary blobs were uploaded to the repository.
+
 ## 7. Current conclusion
 
 **Android 9 on MT6795 is technically demonstrated by the X500 Pie port. A verified HTC One M9+ LineageOS 16.0 port is not yet established.**
