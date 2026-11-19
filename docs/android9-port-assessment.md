@@ -64,6 +64,18 @@ Source listing: https://www.htcdev.com/devcenter/downloads/P460
 
 The user's running kernel is 3.10.72. Until an exact matching 3.10.72 HTC source package or a verifiable patch path is found, the kernel source baseline remains an unresolved blocker. The X500 3.10.108 kernel cannot fill this gap by itself.
 
+### Same-version MT6795 kernel reference
+
+A second kernel reference is available at:
+
+- https://github.com/nofearnohappy/Kernel-3.10.72-new
+- Kernel Makefile: `kernel-3.10/Makefile`
+- Defconfig: `kernel-3.10/arch/arm64/configs/hermes_defconfig`
+
+This repository's Makefile reports Linux **3.10.72**, and its README identifies the target as Xiaomi Redmi Note 2 (`hermes` / `hennesy`) on MT6795 with a Vanzo ALPS-MP-M0.MP11 vendor BSP. Its defconfig selects `CONFIG_ARCH_MT6795=y`, `CONFIG_MTK_PLATFORM="mt6795"`, and platform-specific camera, display, touch and sensor drivers.
+
+This is a useful same-version, same-SoC comparison point for the HTC 3.10.72 kernel. It is still **not an HTC source drop**: its `hermes_defconfig`, panel dimensions, camera sensor list, touch controller and board-specific hardware settings are for Redmi Note 2. Its code can help identify common MTK kernel components, but HTC board support must be brought from HTC-specific source or reconstructed from verified stock artifacts.
+
 ## 4. Historical M9+ Pie ROM lead — not validated
 
 A 2019 page advertises an unofficial beta called “Pixel Experience Android Pie 9.0 Wannabe” for HTC One M9+:
@@ -89,7 +101,7 @@ Existing analysis artifact: `htc-m9p-library-analysis.zip` (from workflow run 44
 
 ## 6. Recommended engineering path
 
-1. **Recover the exact HTC kernel source.** Search for the source corresponding to the user's 3.10.72 build ID and firmware. The official 3.10.61 HTC source can be used for comparison, not silently treated as exact. Keep the vendor kernel's board files, device tree, panel/touch/camera drivers and MTK modifications intact.
+1. **Recover or reconstruct the HTC kernel source.** Search for the source corresponding to the user's 3.10.72 build ID and firmware. Compare the official HTC 3.10.61 source with the same-version MT6795 Redmi kernel and the newer X500 Pie kernel to isolate common MTK code. None of these substitutes is exact HTC source. Keep the vendor kernel's board files, device tree, panel/touch/camera drivers and MTK modifications intact.
 2. **Build an HTC device tree for LineageOS 16.0.** Start from the HTC-specific partition/device information, and borrow only framework/HIDL compatibility patterns from the X500 Pie tree. Do not import X500's `x500_defconfig`, partition sizes, panel settings, touch driver, camera configuration or modem setup as if they were HTC-specific.
 3. **Reconcile the boot image.** Use the saved stock boot image and verified device data to establish the precise boot header, offsets, DTB/DTBO arrangement, kernel command line and ramdisk init imports. The existing boot partition is 32 MiB, not 16 MiB.
 4. **Port the API-23 vendor stack carefully.** Inventory both 32-bit and 64-bit blobs, resolve every vendor dependency, adapt service definitions/HIDL wrappers, init rc files, properties and SELinux labels. Test display, camera, audio, sensors, fingerprint, Wi-Fi/BT, GNSS, and RIL separately.
