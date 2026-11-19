@@ -1,0 +1,102 @@
+name: Audit historical HTC M9+ prebuilt kernel
+
+on:
+  push:
+    branches:
+      - kernel-source-audit
+    paths:
+      - .github/workflows/audit-historical-kernel.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download exact historical device-tree kernel blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work report
+          curl -fL --retry 3 \
+            https://raw.githubusercontent.com/sabpprook/android_device_htc_hiau_ml_tuhl/2df72337ae1fee189688abde146627de6189cf64/kernel \
+            -o work/hiau-old-kernel
+          file work/hiau-old-kernel > report/file-type.txt
+          sha256sum work/hiau-old-kernel > report/checksums.txt
+      - name: Inspect kernel and compare documented target facts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import gzip, hashlib, re, subprocess, zlib
+          from pathlib import Path
+          p = Path("work/hiau-old-kernel")
+          b = p.read_bytes()
+          lines = [
+              "# Historical HTC M9+ device-tree kernel audit",
+              "",
+              f"- Downloaded blob bytes: {len(b)}",
+              f"- SHA-256: {hashlib.sha256(b).hexdigest()}",
+              f"- Git object SHA-1 expected from repository tree: 9ff2bb3e4fb1bafbb94cea6725d29b4a703993b1",
+              "- Source: sabpprook/android_device_htc_hiau_ml_tuhl, commit 2df72337ae1fee189688abde146627de6189cf64",
+              "",
+              "## Target phone kernel (from the supplied boot image)",
+              "- Linux version: 3.10.72-00985-g797d1b3",
+              "- Build date: Tue Oct 18 17:32:43 CST 2016",
+              "- Kernel segment bytes: 7,357,362",
+              "- Payload layout: gzip kernel followed by three 40,897-byte FDTs",
+              "",
+              "## Historical prebuilt kernel inspection",
+              "",
+          ]
+          lines += ["- File identification: " + subprocess.run(["file", str(p)], capture_output=True, text=True).stdout.strip()]
+          # The historical blob may be a compressed kernel or a zImage. Try common gzip layouts.
+          candidates = []
+          if b[:2] == b"\\x1f\\x8b":
+              candidates.append((0, b))
+          for m in re.finditer(b"\\x1f\\x8b\\x08", b):
+              if m.start() and m.start() < len(b):
+                  candidates.append((m.start(), b[m.start():]))
+          decompressed = None
+          for off, chunk in candidates:
+              try:
+                  d = gzip.decompress(chunk)
+                  decompressed = (off, d)
+                  break
+              except Exception:
+                  try:
+                      z = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                      d = z.decompress(chunk)
+                      if len(d) > 1_000_000:
+                          decompressed = (off, d)
+                          break
+                  except Exception:
+                      pass
+          scan = b
+          if decompressed:
+              off, d = decompressed
+              lines += [f"- Gzip stream found at offset: {off}", f"- Decompressed byte count: {len(d)}"]
+              scan = d
+          else:
+              lines += ["- No complete standalone gzip stream could be decoded from this blob."]
+          strings = [x.decode("ascii", "replace") for x in re.findall(rb"[\\x20-\\x7e]{6,}", scan)]
+          interesting = [s for s in strings if any(k in s.lower() for k in ("linux version", "gcc version", "mt6795", "mediatek", "3.10.", "hiau", "htc"))]
+          lines += ["", "## Relevant printable strings"]
+          lines += ["- " + s[:300] for s in interesting[:100]] or ["- No relevant strings found in the uncompressed scan."]
+          lines += ["", "## FDT markers"]
+          lines += [f"- FDT magic (d00dfeed) occurrences in blob: {b.count(bytes.fromhex('d00dfeed'))}",
+                    f"- FDT magic occurrences in decompressed payload (if decoded): {scan.count(bytes.fromhex('d00dfeed'))}"]
+          lines += ["", "## Interpretation", "",
+                    "The phone's supplied kernel segment has a different size and SHA-256 from this historical prebuilt. A different hash alone does not prove a different kernel source revision, because compression and appended DTBs can differ. The embedded version/build strings and layout must be used to decide whether it is a viable reference. Do not flash this historical image.",
+                    ""]
+          Path("report/kernel-audit.md").write_text("\n".join(lines))
+          PY
+      - name: Upload text-only audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: htc-m9p-historical-kernel-audit
+          path: report/
+          if-no-files-found: error
+          retention-days: 14
