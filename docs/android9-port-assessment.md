@@ -89,7 +89,7 @@ The post dates the build to 2019-04-24 and claims Wi-Fi, RIL, mobile data, GPS, 
 - No ROM binary, checksum, source tree, build instructions, device-tree commit or kernel source was obtained to verify the claims.
 - The same page reports the ROM kernel as Linux **3.4.x**, which conflicts with the target's measured 3.10.72 kernel and needs explanation before it can be treated as a matching build.
 
-This is a lead worth recovering for offline inspection if a trustworthy copy can be found, but it is **not** a safe or verified flash recommendation.
+This is a lead worth recovering for offline inspection if a trustworthy copy can be found, but it is **not** a safe or verified flash recommendation. Reliability is further weakened because the same generic “Wannabe” wording, identical working-feature claims and the same Linux 3.4.x info table also appear on unrelated HTC U Play and One M7 pages. Treat the M9+ post as an unverified repost/marketing page until an authentic binary, checksum and device-specific evidence are found.
 
 ## 5. Vendor baseline already inventoried
 
@@ -127,3 +127,16 @@ A text-only technical report was generated locally as `htc-m9p-stock-baseline-re
 The key blocker is now sharper: not the Android framework version or raw count of blobs, but the lack of a verified HTC-specific 3.10.72 kernel source/build path and a current HTC device tree. The historical M9+ Pie beta may provide a useful binary comparison, but it must be authenticated and inspected before relying on it.
 
 No flashable build is claimed by this assessment.
+
+
+## 9. Preliminary build inputs generated locally
+
+A text-only report ZIP now includes:
+- exact boot header and inferred mkbootimg offsets;
+- full ramdisk CPIO file listing, extracted fstab, and init import ordering;
+- the three-DTB comparison and hardware node summary;
+- the combined vendor dependency report and nine likely vendor-specific unresolved SONAMEs;
+- a **partial** proprietary path manifest assembled from the captured archives; and
+- a verified boot/partition/ABI BoardConfig fragment.
+
+The proprietary manifest is intentionally labelled partial: only paths present in the supplied subset archives are listed. It is not an authoritative full vendor extraction list. The BoardConfig file is also only a fragment and intentionally omits a kernel source/config until a matching HTC source path is established.
