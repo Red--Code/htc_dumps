@@ -70,6 +70,21 @@ A public device report for the HTC One X9 (`E56_ML_DTUL`, another HTC MT6795 dev
 
 Device report: https://4pda.to/forum/index.php?showtopic=555928&st=140
 
+### HTC One X9 recovery/device-tree reference found
+
+A public HTC One X9 device tree is available:
+
+- https://github.com/sabpprook/android_device_htc_e56ml/tree/android-6.0
+- Branch head `69c289c2fea01051c326813efd918de95b31d658`
+- Product identifies itself as HTC One X9 (`e56ml`).
+- The tree contains a **prebuilt** `kernel` blob (7,230,596 bytes), not kernel source.
+- Its BoardConfig selects `mt6795`, ARM64 + ARM32 userspace, base `0x40078000`, page size 2048, kernel offset `0x8000`, ramdisk offset `0x03f88000`, tags offset `0x0df88000`, command line `bootopt=64S3,32N2,64N2`, and 32 MiB boot/recovery partitions.
+- Its recovery fstab uses the same MTK eMMC controller path and the same broad MT6795 partition naming family.
+
+This is a substantially closer **HTC board-layout reference** than the LeEco X500 or Redmi Note 2. The boot constants independently agree with the M9+ stock boot header and measured 32 MiB boot/recovery capacities. However, it is a different HTC board: its kernel blob must not be flashed on the M9+, and the repository contains no matching kernel source. The X9's display, camera, touchscreen, sensors, fingerprint and other board details remain distinct.
+
+A read-only GitHub Actions workflow was added to this repository to inspect the X9 prebuilt kernel's version strings and checksum without committing the binary. Results will be stored as a text-only workflow artifact.
+
 ### Same-version MT6795 kernel reference
 
 A second kernel reference is available at:
