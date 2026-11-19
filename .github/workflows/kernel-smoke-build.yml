@@ -35,13 +35,16 @@ jobs:
             echo "TOOLCHAIN_GCC=$(toolchain/bin/aarch64-elf-gcc --version | head -n1)"
           } | tee source-versions.txt
 
-      - name: Apply temporary local-header include fix for old Synaptics driver
+      - name: Apply temporary local-header include fixes for legacy vendor drivers
         shell: bash
         run: |
           set -euo pipefail
           # Header exists in the source tree; the old driver Makefile used -I$(PWD),
           # which points at the kernel root under Kbuild rather than its own directory.
           echo 'subdir-ccflags-y += -I$(srctree)/drivers/misc/fpr_Synaptics' >> kernel/drivers/misc/fpr_Synaptics/Makefile
+          # Trustonic GUD source includes a header from its parent directory but
+          # the upstream Kbuild omitted that include directory.
+          echo 'ccflags-y += -I$(srctree)/drivers/misc/mediatek/gud/mt6795/gud' >> kernel/drivers/misc/mediatek/gud/mt6795/gud/Makefile
 
       - name: Configure and compile reference Image.gz-dtb
         shell: bash
@@ -80,7 +83,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: htc-m9pw-reference-kernel-smoke-build-v3
+          name: htc-m9pw-reference-kernel-smoke-build-v4
           path: report/
           if-no-files-found: warn
           retention-days: 14
